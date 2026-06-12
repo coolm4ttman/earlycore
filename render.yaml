@@ -1,30 +1,46 @@
-# Render deployment — public URL for judges.
-# The web service runs the UI server (dashboard + graph + SSE) and hosts the
-# orchestrator in-process; the target agent runs as a private service the
-# orchestrator attacks over the internal network.
+# Render deployment — public URL for judges (earlycore.io).
+# Deploy: Render dashboard → New → Blueprint → select this repo. The sync:false
+# env vars below prompt for your keys during creation; everything else is
+# automatic. The target agent runs as a private service the platform attacks
+# over the internal network.
 
 services:
   - type: web
     name: earlycore
     runtime: node
-    plan: free
-    buildCommand: npm ci && cd ui/web && npm ci && npm run build
+    plan: starter
+    buildCommand: npm ci && cd ui/web && npm ci --legacy-peer-deps && npm run build
     startCommand: npx tsx ui/server.ts
+    healthCheckPath: /api/topology
     envVars:
       - key: NODE_VERSION
         value: '22'
       - key: EARLYCORE_FAST
-        value: '0'
+        value: '1'
       # Private services resolve by name on Render's internal network.
       - key: AGENT_URL
         value: http://earlycore-target:10000
-      # Sponsor keys are set in the Render dashboard, never committed:
-      # OPENAI_API_KEY, COMPOSIO_API_KEY, LANGFUSE_*, CLICKHOUSE_URL, SENSO_API_KEY, PIONEER_*
+      # Drive the loop from the committed real red-team results (84 findings).
+      - key: EARLYCORE_MODE
+        value: promptfoo
+      - key: EARLYCORE_RESULTS_FILE
+        value: .earlycore/redteam-results.json
+      - key: THESYS_MODEL
+        value: c1/anthropic/claude-sonnet-4.6/v-20260331
+      # Secrets — prompted at blueprint creation, never committed.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: THESYS_API_KEY
+        sync: false
+      - key: SENSO_API_KEY
+        sync: false
+      - key: COMPOSIO_API_KEY
+        sync: false
 
   - type: pserv
     name: earlycore-target
     runtime: node
-    plan: free
+    plan: starter
     buildCommand: npm ci
     startCommand: npx tsx demo/vulnerable-agent.ts
     envVars:
