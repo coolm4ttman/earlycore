@@ -41,9 +41,6 @@ and emits auditor-ready compliance evidence from what actually happened.
   actions (every score ships its per-finding deductions) — plus Senso-grounded
   clause mappings bundled into an auditor pack.
 
-**Honest line:** Promptfoo is the OSS red-team foundation; EarlyCore is the
-cross-layer correlation + autonomy + evidence layer on top.
-
 ## Quickstart
 
 ```bash
