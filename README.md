@@ -1,21 +1,21 @@
 # EarlyCore — Wiz for agents
 
-Real-time security for AI agents in production. EarlyCore watches an agent
-environment agentlessly, red-teams it pre-production, intercepts live attacks
-at the gateway before data leaves, correlates everything into a **cross-layer
-attack graph**, severs the attack path autonomously — no human in the loop —
-and emits auditor-ready compliance evidence from what actually happened.
+**Real-time security for AI agents.** EarlyCore red-teams your agent, traces
+attacks across every layer of the stack, and shuts them down on its own.
 
-```
-            ┌─────────────────────────────────────────────────────────┐
-            │                      EARLYCORE LOOP                     │
-            │                                                         │
-   logs ───▶│  SEE ──▶ STOP ──────▶ TRACE ─────▶ FIX ─────▶ PROVE     │
-  traces    │  agentless  red team +   cross-layer   autonomous   live │
-  telemetry │  ingestion  runtime      attack graph  sever +      scores
-            │             interception  (the moat)   replay-proof  + evidence
-            └─────────────────────────────────────────────────────────┘
-```
+### 🔗 [Live demo → earlycore.xyz](https://earlycore.xyz) · it's already monitoring a live agent — no setup, no login
+
+<p align="center"><img src="docs/architecture.svg" alt="EarlyCore — the SEE / STOP / TRACE / FIX / PROVE autonomy loop" width="100%"></p>
+
+EarlyCore watches an agent environment agentlessly, red-teams it pre-production,
+intercepts live attacks at the gateway before data leaves, correlates everything
+into a **cross-layer attack graph**, severs the attack path autonomously — no
+human in the loop — and emits auditor-ready compliance evidence from what
+actually happened.
+
+> In the live demo: **138 attacks** fired at a running agent, **84 land**, and
+> EarlyCore closes every one autonomously — **64 proven shut by replaying the
+> attack** — averaging **~1 second** from detection to verified fix.
 
 - **SEE** — agentless ingestion: EarlyCore reads the target's existing
   telemetry (API-gateway access logs, LangChain traces; LogFire/Bedrock
