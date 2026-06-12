@@ -1,4 +1,4 @@
-# Render deployment — public URL for judges (earlycore.io).
+# Render deployment — public URL for judges (earlycore.xyz).
 # Deploy: Render dashboard → New → Blueprint → select this repo. The sync:false
 # env vars below prompt for your keys during creation; everything else is
 # automatic. The target agent runs as a private service the platform attacks
