@@ -82,11 +82,11 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg">
               <div className="bg-muted flex aspect-square size-8 items-center justify-center rounded-lg">
-                <span className="text-xs font-medium">PE</span>
+                <span className="text-xs font-medium">SOC</span>
               </div>
               <div className="grid flex-1 text-left leading-tight">
-                <span className="truncate text-sm font-medium">paul@earlycore.dev</span>
-                <span className="text-muted-foreground truncate text-xs">paul@earlycore.dev</span>
+                <span className="truncate text-sm font-medium">Security Team</span>
+                <span className="text-muted-foreground truncate text-xs">SOC · AcmeCo</span>
               </div>
               <ChevronsUpDown className="text-muted-foreground ml-auto size-4" />
             </SidebarMenuButton>
