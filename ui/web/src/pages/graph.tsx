@@ -1,11 +1,13 @@
-// The cross-layer attack graph — the hero — rendered with React Flow.
-// Same honesty contract as always: an edge lights up only when a real computed
-// path traversed it; it goes grey-dashed only when the loop actually wrote the
-// enforcement rule and the replay confirmed the block.
+// The cross-layer attack graph — the hero. Clean React Flow: layered lane
+// bands (agent → tool → cloud → data → gpu), restrained edges, and lit attack
+// paths that animate then grey out when EarlyCore severs them. Honest as ever:
+// an edge lights only when a real computed path traversed it; it greys only
+// when the loop wrote the enforcement rule AND the replay confirmed the block.
 
 import { useMemo } from 'react'
 import {
   Background,
+  BackgroundVariant,
   Controls,
   MarkerType,
   ReactFlow,
@@ -14,12 +16,22 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { AutonomousActivity } from '@/components/autonomous-activity'
 import { useEarlyCore } from '@/lib/store'
 import type { Layer, Severity } from '@/lib/types'
 
-const LANES: Layer[] = ['agent', 'tool', 'cloud', 'data', 'gpu']
-const LANE_H = 130
-const WIDTH = 860
+const LANES: { id: Layer; label: string }[] = [
+  { id: 'agent', label: 'AGENT' },
+  { id: 'tool', label: 'TOOL' },
+  { id: 'cloud', label: 'CLOUD' },
+  { id: 'data', label: 'DATA' },
+  { id: 'gpu', label: 'GPU' },
+]
+const LANE_H = 116
+const LANE_LABEL_W = 92
+const CONTENT_W = 760
+const GRAPH_W = LANE_LABEL_W + CONTENT_W
+const NODE_W = 150
 
 const SEV_COLOR: Record<Severity, string> = {
   critical: '#dc2626',
@@ -27,22 +39,21 @@ const SEV_COLOR: Record<Severity, string> = {
   medium: '#d97706',
   low: '#2563eb',
 }
-
 const RANK: Record<Severity, number> = { critical: 4, high: 3, medium: 2, low: 1 }
 
 export default function GraphPage() {
-  const { topology, paths, remediations, simulations, logs } = useEarlyCore()
+  const { topology, paths, remediations, simulations } = useEarlyCore()
 
   const { nodes, edges } = useMemo(() => {
     if (!topology) return { nodes: [] as Node[], edges: [] as Edge[] }
 
-    // Edge / node state from real events.
+    // Real edge/node state.
     const edgeSeverity = new Map<string, Severity>()
     for (const path of paths.values()) {
       for (let i = 0; i < path.nodes.length - 1; i++) {
         const key = `${path.nodes[i]}--${path.nodes[i + 1]}`
-        const existing = edgeSeverity.get(key)
-        if (!existing || RANK[path.severity] > RANK[existing]) edgeSeverity.set(key, path.severity)
+        const cur = edgeSeverity.get(key)
+        if (!cur || RANK[path.severity] > RANK[cur]) edgeSeverity.set(key, path.severity)
       }
     }
     const severed = new Set<string>()
@@ -54,62 +65,90 @@ export default function GraphPage() {
     const litNodes = new Map<string, Severity>()
     for (const path of paths.values()) {
       for (const id of path.nodes) {
-        const existing = litNodes.get(id)
-        if (!existing || RANK[path.severity] > RANK[existing]) litNodes.set(id, path.severity)
+        const cur = litNodes.get(id)
+        if (!cur || RANK[path.severity] > RANK[cur]) litNodes.set(id, path.severity)
       }
     }
 
     const nodes: Node[] = []
 
-    // Lane labels (non-interactive).
+    // Lane bands (behind everything) + lane labels.
     LANES.forEach((lane, i) => {
       nodes.push({
-        id: `lane-${lane}`,
-        position: { x: -110, y: i * LANE_H + 28 },
-        data: { label: lane.toUpperCase() },
+        id: `band-${lane.id}`,
+        position: { x: 0, y: i * LANE_H },
+        data: { label: '' },
+        draggable: false,
+        selectable: false,
+        zIndex: -1,
+        style: {
+          width: GRAPH_W,
+          height: LANE_H,
+          background: i % 2 === 0 ? 'var(--muted)' : 'transparent',
+          opacity: 0.5,
+          border: 'none',
+          borderRadius: 0,
+          pointerEvents: 'none',
+        },
+      })
+      nodes.push({
+        id: `lane-${lane.id}`,
+        position: { x: 10, y: i * LANE_H + LANE_H / 2 - 10 },
+        data: { label: lane.label },
         draggable: false,
         selectable: false,
         style: {
+          width: LANE_LABEL_W - 16,
           background: 'transparent',
           border: 'none',
           boxShadow: 'none',
-          color: 'hsl(215.4 16.3% 46.9%)',
+          color: 'var(--muted-foreground)',
           fontSize: 10,
           fontWeight: 700,
           letterSpacing: 2,
-          width: 90,
-          textAlign: 'right' as const,
+          textAlign: 'left' as const,
         },
       })
     })
 
     // Topology nodes positioned by lane.
-    for (const lane of LANES) {
-      const laneNodes = topology.nodes.filter((n) => n.layer === lane)
+    for (let li = 0; li < LANES.length; li++) {
+      const laneNodes = topology.nodes.filter((n) => n.layer === LANES[li].id)
       laneNodes.forEach((n, i) => {
         const sev = litNodes.get(n.id)
+        const x = LANE_LABEL_W + (CONTENT_W / (laneNodes.length + 1)) * (i + 1) - NODE_W / 2
+        const y = li * LANE_H + LANE_H / 2 - 21
         const border = sev
-          ? `2.5px solid ${SEV_COLOR[sev]}`
+          ? `2px solid ${SEV_COLOR[sev]}`
           : n.trust === 'untrusted'
             ? '2px dashed #f59e0b'
-            : '1.5px solid hsl(214.3 31.8% 91.4%)'
+            : '1px solid var(--border)'
+        const tag =
+          n.trust === 'untrusted' ? '⚠ untrusted' : n.sensitivity === 'sensitive' ? '◆ sensitive' : ''
         nodes.push({
           id: n.id,
-          position: {
-            x: (WIDTH / (laneNodes.length + 1)) * (i + 1) - 70,
-            y: LANES.indexOf(lane) * LANE_H + 20,
-          },
+          position: { x, y },
           data: {
-            label: `${n.trust === 'untrusted' ? '☣ ' : n.sensitivity === 'sensitive' ? '◆ ' : ''}${n.label}`,
+            label: (
+              <div className="flex flex-col gap-0.5 leading-tight">
+                <span className="text-[12px] font-semibold">{n.label}</span>
+                {tag && (
+                  <span className={n.trust === 'untrusted' ? 'text-amber-600' : 'text-blue-600'} style={{ fontSize: 9 }}>
+                    {tag}
+                  </span>
+                )}
+              </div>
+            ),
           },
+          draggable: false,
           style: {
+            width: NODE_W,
+            padding: '8px 10px',
             border,
             borderRadius: 10,
-            background: 'white',
-            fontSize: 12,
-            fontWeight: 600,
-            width: 140,
-            boxShadow: sev ? `0 0 14px ${SEV_COLOR[sev]}55` : '0 1px 2px rgba(0,0,0,.05)',
+            background: sev ? `color-mix(in srgb, ${SEV_COLOR[sev]} 7%, white)` : 'white',
+            boxShadow: sev ? `0 0 0 3px color-mix(in srgb, ${SEV_COLOR[sev]} 18%, transparent)` : '0 1px 2px rgba(0,0,0,.06)',
+            textAlign: 'left' as const,
           },
         })
       })
@@ -119,78 +158,73 @@ export default function GraphPage() {
       const key = `${e.from}--${e.to}`
       const isSevered = severed.has(key)
       const sev = edgeSeverity.get(key)
-      const color = isSevered ? '#94a3b8' : sev ? SEV_COLOR[sev] : '#cbd5e1'
+      const lit = Boolean(sev) && !isSevered
+      const color = isSevered ? '#94a3b8' : sev ? SEV_COLOR[sev] : '#d1d5db'
       return {
         id: key,
         source: e.from,
         target: e.to,
-        label: isSevered ? '✂ severed' : e.relation,
-        animated: Boolean(sev && !isSevered),
+        type: 'smoothstep',
+        animated: lit,
+        label: isSevered ? '✂ severed' : lit ? e.relation : undefined,
         style: {
           stroke: color,
-          strokeWidth: sev && !isSevered ? 2.5 : 1.5,
-          strokeDasharray: isSevered ? '6 5' : undefined,
+          strokeWidth: lit ? 2.5 : 1.25,
+          strokeDasharray: isSevered ? '6 4' : undefined,
+          opacity: sev || isSevered ? 1 : 0.55,
         },
-        labelStyle: { fontSize: 9, fill: isSevered ? '#64748b' : 'hsl(215.4 16.3% 46.9%)' },
-        labelBgStyle: { fill: 'white', fillOpacity: 0.8 },
-        markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+        labelStyle: { fontSize: 9, fill: isSevered ? '#64748b' : color, fontWeight: 600 },
+        labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
+        labelBgPadding: [3, 1] as [number, number],
+        markerEnd: { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
       }
     })
 
     return { nodes, edges }
   }, [topology, paths, remediations, simulations])
 
+  const litCount = useMemo(() => {
+    const n = new Set<string>()
+    for (const p of paths.values()) p.nodes.forEach((id) => n.add(id))
+    return n.size
+  }, [paths])
+
+  if (!topology) {
+    return <div className="text-muted-foreground p-10 text-center text-sm">Loading topology…</div>
+  }
+
   return (
-    <div className="grid h-[calc(100vh-3rem)] gap-4 p-4 lg:grid-cols-[1fr_320px] lg:p-6">
-      <Card className="flex flex-col">
-        <CardHeader>
+    <div className="grid h-[calc(100vh-3rem)] gap-4 p-4 lg:grid-cols-[1fr_340px] lg:p-6">
+      <Card className="flex min-h-[460px] flex-col">
+        <CardHeader className="pb-3">
           <CardTitle>Cross-Layer Attack Graph</CardTitle>
           <p className="text-muted-foreground text-sm">
-            A path lights only when a real finding traversed it — and goes grey when EarlyCore severs it.
+            {litCount > 0
+              ? `${litCount} nodes on live attack paths. Red = traversed by a real finding · dashed grey = severed by EarlyCore.`
+              : 'Edges light up as findings traverse the stack, then grey out when EarlyCore severs the path.'}
           </p>
         </CardHeader>
-        <CardContent className="min-h-0 flex-1">
-          <div className="h-full min-h-[420px] rounded-lg border">
-            <ReactFlow nodes={nodes} edges={edges} fitView proOptions={{ hideAttribution: false }}>
-              <Background gap={24} />
-              <Controls showInteractive={false} />
+        <CardContent className="min-h-0 flex-1 pt-0">
+          <div className="bg-card h-full min-h-[420px] overflow-hidden rounded-lg border">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              fitView
+              fitViewOptions={{ padding: 0.12 }}
+              nodesDraggable={false}
+              nodesConnectable={false}
+              proOptions={{ hideAttribution: true }}
+              minZoom={0.4}
+              maxZoom={1.5}
+            >
+              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
+              <Controls showInteractive={false} position="bottom-right" />
             </ReactFlow>
           </div>
-          <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-4 text-xs">
-            <span className="flex items-center gap-1.5"><i className="size-2 rounded-full bg-red-600" /> critical path</span>
-            <span className="flex items-center gap-1.5"><i className="size-2 rounded-full bg-orange-600" /> high path</span>
-            <span className="flex items-center gap-1.5"><i className="size-2 rounded-full bg-slate-400" /> severed</span>
-            <span>☣ untrusted source</span>
-            <span>◆ sensitive sink</span>
-          </div>
         </CardContent>
       </Card>
-      <Card className="flex min-h-0 flex-col">
-        <CardHeader>
-          <CardTitle>Live feed</CardTitle>
-        </CardHeader>
-        <CardContent className="min-h-0 flex-1 overflow-y-auto">
-          <div className="space-y-1.5">
-            {logs.length === 0 && (
-              <p className="text-muted-foreground text-sm">Run the autonomy loop to see live events.</p>
-            )}
-            {[...logs].reverse().map((l, i) => (
-              <div
-                key={i}
-                className={`border-l-2 py-1 pl-2 text-xs ${
-                  l.level === 'warn'
-                    ? 'border-orange-400 text-foreground'
-                    : l.level === 'error'
-                      ? 'border-red-500 text-red-700'
-                      : 'border-border text-muted-foreground'
-                }`}
-              >
-                {l.message}
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+
+      <AutonomousActivity />
     </div>
   )
 }

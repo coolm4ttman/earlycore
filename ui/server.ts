@@ -89,6 +89,20 @@ setInterval(() => {
 }, 15_000).unref()
 
 let running = false
+let lastScanAt: string | null = null
+
+function startScan(): void {
+  if (running) return
+  running = true
+  runOrchestrator()
+    .catch((err) => {
+      bus.publish({ kind: 'log', level: 'error', message: `scan failed: ${err?.message ?? err}` })
+    })
+    .finally(() => {
+      running = false
+      lastScanAt = new Date().toISOString()
+    })
+}
 
 async function readBody(req: import('node:http').IncomingMessage): Promise<string> {
   let data = ''
@@ -199,19 +213,22 @@ const server = createServer(async (req, res) => {
     return
   }
 
-  // Run the autonomy loop in-process (the demo button).
+  // Monitoring status: is a scan running, and when did the last one finish.
+  if (req.method === 'GET' && url === '/api/status') {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ scanning: running, lastScanAt }))
+    return
+  }
+
+  // Trigger a red-team scan in-process. Continuous runtime monitoring is always
+  // on (the gateway inspects every request); this kicks a fresh scan pass.
   if (req.method === 'POST' && url === '/api/run') {
     if (running) {
       res.writeHead(409, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ error: 'a run is already in progress' }))
+      res.end(JSON.stringify({ error: 'a scan is already in progress' }))
       return
     }
-    running = true
-    runOrchestrator()
-      .catch((err) => {
-        bus.publish({ kind: 'log', level: 'error', message: `run failed: ${err?.message ?? err}` })
-      })
-      .finally(() => (running = false))
+    startScan()
     res.writeHead(202, { 'content-type': 'application/json' })
     res.end(JSON.stringify({ started: true }))
     return
@@ -232,5 +249,10 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`🛰  EarlyCore platform: http://localhost:${PORT}`)
-  console.log(`   start the loop:     curl -X POST http://localhost:${PORT}/api/run`)
+  // Continuous monitoring: kick off an initial scan on boot so the platform is
+  // never empty — it has already been watching by the time anyone opens it.
+  // Disable with EARLYCORE_NO_AUTOSCAN=1.
+  if (process.env.EARLYCORE_NO_AUTOSCAN !== '1') {
+    setTimeout(startScan, 1500)
+  }
 })

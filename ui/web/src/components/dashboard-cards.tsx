@@ -3,7 +3,7 @@
 // Every value derives from real session events (see lib/store.tsx).
 
 import { TrendingUp } from 'lucide-react'
-import { Area, AreaChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts'
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import { buildSeries } from '@/lib/series'
@@ -23,20 +23,22 @@ export function OpenIssuesCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Open Issues</CardTitle>
-        <CardDescription>This session versus previous run</CardDescription>
+        <CardTitle>Open Findings</CardTitle>
+        <CardDescription>Across all monitored agents</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3.5">
         {(Object.keys(counts) as Severity[]).map((sev) => (
           <div key={sev} className={`flex items-center border-l-4 pl-3 ${SEVERITY_ACCENT[sev]}`}>
             <div className="flex-1">
               <div className="text-2xl font-bold tabular-nums">{counts[sev]}</div>
-              <div className="text-muted-foreground text-sm capitalize">{sev} issues</div>
+              <div className="text-muted-foreground text-sm capitalize">{sev}</div>
             </div>
-            <div className={`flex items-center gap-1 text-xs ${counts[sev] > 0 ? 'text-red-600' : 'text-muted-foreground'}`}>
-              {counts[sev] > 0 && <TrendingUp className="size-3.5" />}
-              {counts[sev] > 0 ? '100%' : '0%'}
-            </div>
+            {counts[sev] > 0 && (
+              <div className="flex items-center gap-1 text-xs text-red-600">
+                <TrendingUp className="size-3.5" />
+                detected
+              </div>
+            )}
           </div>
         ))}
       </CardContent>
@@ -47,6 +49,7 @@ export function OpenIssuesCard() {
 const severityChartConfig = {
   critical: { label: 'Critical', color: 'var(--chart-1)' },
   high: { label: 'High', color: 'var(--chart-2)' },
+  medium: { label: 'Medium', color: 'var(--chart-3)' },
 } satisfies ChartConfig
 
 export function SeverityChartCard() {
@@ -55,21 +58,22 @@ export function SeverityChartCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Issues by severity</CardTitle>
-        <CardDescription>This session (live)</CardDescription>
+        <CardTitle>Findings by severity</CardTitle>
+        <CardDescription>Cumulative, in detection order</CardDescription>
       </CardHeader>
       <CardContent>
         {data.length === 0 ? (
           <EmptyChart />
         ) : (
-          <ChartContainer config={severityChartConfig} className="h-[180px] w-full">
-            <AreaChart data={data} margin={{ left: 0, right: 8, top: 4 }}>
+          <ChartContainer config={severityChartConfig} className="h-[200px] w-full">
+            <AreaChart data={data} margin={{ left: -16, right: 8, top: 4 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="t" tickLine={false} axisLine={false} tickMargin={8} minTickGap={48} />
-              <YAxis allowDecimals={false} width={24} tickLine={false} axisLine={false} />
+              <XAxis dataKey="step" tickLine={false} axisLine={false} tickMargin={8} minTickGap={40} />
+              <YAxis allowDecimals={false} width={32} tickLine={false} axisLine={false} />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <Area dataKey="critical" type="step" fill="var(--color-critical)" fillOpacity={0.18} stroke="var(--color-critical)" strokeWidth={2} />
-              <Area dataKey="high" type="step" fill="var(--color-high)" fillOpacity={0.18} stroke="var(--color-high)" strokeWidth={2} />
+              <Area isAnimationActive={false} dataKey="medium" stackId="s" type="monotone" fill="var(--color-medium)" fillOpacity={0.85} stroke="var(--color-medium)" strokeWidth={1.5} />
+              <Area isAnimationActive={false} dataKey="high" stackId="s" type="monotone" fill="var(--color-high)" fillOpacity={0.9} stroke="var(--color-high)" strokeWidth={1.5} />
+              <Area isAnimationActive={false} dataKey="critical" stackId="s" type="monotone" fill="var(--color-critical)" fillOpacity={0.95} stroke="var(--color-critical)" strokeWidth={1.5} />
             </AreaChart>
           </ChartContainer>
         )}
@@ -79,8 +83,8 @@ export function SeverityChartCard() {
 }
 
 const openedResolvedConfig = {
-  opened: { label: 'Opened', color: 'var(--chart-1)' },
-  resolved: { label: 'Resolved', color: 'var(--chart-5)' },
+  opened: { label: 'Detected', color: 'var(--chart-1)' },
+  resolved: { label: 'Auto-resolved', color: 'var(--chart-5)' },
 } satisfies ChartConfig
 
 export function OpenedResolvedCard() {
@@ -89,22 +93,22 @@ export function OpenedResolvedCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Opened and Resolved Issues</CardTitle>
-        <CardDescription>This session (live)</CardDescription>
+        <CardTitle>Detected vs auto-resolved</CardTitle>
+        <CardDescription>Cumulative, in detection order</CardDescription>
       </CardHeader>
       <CardContent>
         {data.length === 0 ? (
           <EmptyChart />
         ) : (
-          <ChartContainer config={openedResolvedConfig} className="h-[180px] w-full">
-            <LineChart data={data} margin={{ left: 0, right: 8, top: 4 }}>
+          <ChartContainer config={openedResolvedConfig} className="h-[200px] w-full">
+            <AreaChart data={data} margin={{ left: -16, right: 8, top: 4 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="t" tickLine={false} axisLine={false} tickMargin={8} minTickGap={48} />
-              <YAxis allowDecimals={false} width={24} tickLine={false} axisLine={false} />
+              <XAxis dataKey="step" tickLine={false} axisLine={false} tickMargin={8} minTickGap={40} />
+              <YAxis allowDecimals={false} width={32} tickLine={false} axisLine={false} />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <Line dataKey="opened" type="step" stroke="var(--color-opened)" strokeWidth={2} dot={false} />
-              <Line dataKey="resolved" type="step" stroke="var(--color-resolved)" strokeWidth={2} dot={false} />
-            </LineChart>
+              <Area isAnimationActive={false} dataKey="opened" type="monotone" fill="var(--color-opened)" fillOpacity={0.15} stroke="var(--color-opened)" strokeWidth={2.5} dot={false} />
+              <Area isAnimationActive={false} dataKey="resolved" type="monotone" fill="var(--color-resolved)" fillOpacity={0.25} stroke="var(--color-resolved)" strokeWidth={2.5} dot={false} />
+            </AreaChart>
           </ChartContainer>
         )}
       </CardContent>
@@ -114,8 +118,8 @@ export function OpenedResolvedCard() {
 
 function EmptyChart() {
   return (
-    <div className="text-muted-foreground flex h-[180px] items-center justify-center text-sm">
-      No findings yet — run the autonomy loop.
+    <div className="text-muted-foreground flex h-[200px] items-center justify-center text-sm">
+      Scanning… findings will appear here.
     </div>
   )
 }
@@ -162,58 +166,45 @@ export function Gauge({ score, size = 72 }: { score: number; size?: number }) {
   )
 }
 
-const FRAMEWORK_BLURB: Record<string, string> = {
-  'ISO 42001': 'AI Management System certification…',
-  'NIST AI RMF': 'Framework for managing AI risks…',
-  'EU AI Act': 'European Union AI regulation compliance…',
-  'IEEE 7000': 'Ethical standards for AI systems…',
-  'SOC 2': 'Service Organization Control certification…',
-  GDPR: 'General Data Protection Regulation…',
-}
-
 export function ComplianceCard() {
   const { scores } = useEarlyCore()
   const avg = scores.length ? Math.round(scores.reduce((s, x) => s + x.score, 0) / scores.length) : null
   return (
     <Card>
       <CardHeader>
-        <CardTitle>AI Compliance Overview Score</CardTitle>
-        <CardDescription>Computed from this session's findings and actions</CardDescription>
+        <CardTitle>AI Compliance Posture</CardTitle>
+        <CardDescription>
+          Residual-risk score per framework — detection plus autonomous closure raises posture
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {scores.length === 0 ? (
           <div className="text-muted-foreground py-8 text-center text-sm">
-            Scores appear after the first PROVE pass.
+            Scoring as the scan completes…
           </div>
         ) : (
-          <>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3">
+          <div className="flex flex-col items-stretch gap-6 lg:flex-row lg:items-center">
+            <div className="grid flex-1 grid-cols-3 gap-x-4 gap-y-5 sm:grid-cols-6">
               {scores.map((s) => (
                 <div key={s.framework} className="flex flex-col items-center text-center">
                   <Gauge score={s.score} />
                   <div className="mt-2 text-sm font-medium">{s.framework}</div>
-                  <div className="text-muted-foreground line-clamp-2 text-xs">
-                    {FRAMEWORK_BLURB[s.framework] ?? ''}
+                  <div className="text-muted-foreground text-xs tabular-nums">
+                    {s.closedFindings} mitigated · {s.openFindings} open
                   </div>
                 </div>
               ))}
             </div>
             {avg !== null && (
-              <div className="mt-6 flex items-center justify-between border-t pt-4">
+              <div className="flex items-center gap-3 border-t pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                <Gauge score={avg} size={64} />
                 <div>
-                  <div className="text-muted-foreground text-xs">Overall Compliance</div>
-                  <div className="font-semibold">AI Governance &amp; Risk Management</div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Gauge score={avg} size={56} />
-                  <div className="text-right">
-                    <div className="text-2xl font-bold">{avg}%</div>
-                    <div className="text-muted-foreground text-xs">Average</div>
-                  </div>
+                  <div className="text-2xl font-bold">{avg}%</div>
+                  <div className="text-muted-foreground text-xs">Overall posture</div>
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </CardContent>
     </Card>

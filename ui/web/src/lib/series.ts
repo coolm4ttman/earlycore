@@ -1,49 +1,42 @@
-// Builds chart series from REAL event timestamps within the session. The
-// production product charts 30 days of history; a demo run spans seconds, so
-// we chart exactly that and label the axis truthfully — no invented history.
+// Builds chart series from the REAL findings of the current scan. A scan
+// completes in seconds, so plotting against wall-clock collapses everything
+// onto one tick. Instead we plot cumulative findings against their arrival
+// ORDER (the sequence EarlyCore detected them in) — a faithful, readable curve
+// of how the scan surfaced and then closed issues.
 
 import type { FindingRecord, Severity } from './types'
 
 export interface SeriesPoint {
-  t: string // HH:MM:SS label
+  step: number
   opened: number
   resolved: number
   critical: number
   high: number
   medium: number
-  low: number
 }
 
-const fmt = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { hour12: false })
+function isResolved(r: FindingRecord): boolean {
+  return r.status === 'verified-closed' || r.status === 'closed'
+}
 
 export function buildSeries(records: FindingRecord[]): SeriesPoint[] {
-  const stamps: { ms: number; kind: 'open' | 'close'; severity: Severity }[] = []
-  for (const r of records) {
-    stamps.push({ ms: new Date(r.openedAt).getTime(), kind: 'open', severity: r.finding.severity })
-    if (r.closedAt) stamps.push({ ms: new Date(r.closedAt).getTime(), kind: 'close', severity: r.finding.severity })
-  }
-  if (stamps.length === 0) return []
-  stamps.sort((a, b) => a.ms - b.ms)
+  if (records.length === 0) return []
+  // Stable detection order: openedAt, then id.
+  const ordered = [...records].sort((a, b) => {
+    const t = a.openedAt.localeCompare(b.openedAt)
+    return t !== 0 ? t : a.finding.id.localeCompare(b.finding.id)
+  })
 
-  const start = stamps[0].ms - 1000
-  const end = stamps[stamps.length - 1].ms + 1000
-  // ≤ 90 buckets across the real span (min 1s buckets).
-  const bucketMs = Math.max(1000, Math.ceil((end - start) / 90))
-
-  const points: SeriesPoint[] = []
-  const totals = { opened: 0, resolved: 0, critical: 0, high: 0, medium: 0, low: 0 }
-  let i = 0
-  for (let t = start; t <= end; t += bucketMs) {
-    while (i < stamps.length && stamps[i].ms <= t) {
-      const s = stamps[i++]
-      if (s.kind === 'open') {
-        totals.opened++
-        totals[s.severity]++
-      } else {
-        totals.resolved++
-      }
-    }
-    points.push({ t: fmt(t), ...totals })
-  }
+  const points: SeriesPoint[] = [{ step: 0, opened: 0, resolved: 0, critical: 0, high: 0, medium: 0 }]
+  const totals = { opened: 0, resolved: 0, critical: 0, high: 0, medium: 0 }
+  ordered.forEach((r, i) => {
+    totals.opened++
+    if (isResolved(r)) totals.resolved++
+    const sev = r.finding.severity as Severity
+    if (sev === 'critical') totals.critical++
+    else if (sev === 'high') totals.high++
+    else if (sev === 'medium') totals.medium++
+    points.push({ step: i + 1, ...totals })
+  })
   return points
 }

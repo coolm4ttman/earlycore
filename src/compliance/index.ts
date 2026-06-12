@@ -1,17 +1,18 @@
-// PROVE — live compliance scores computed transparently from real findings and
-// real remediation outcomes. Nothing here is a hardcoded number: every score
-// carries the per-finding deductions that produced it, so an auditor can
-// recompute it by hand.
+// PROVE — live compliance posture scores computed transparently from real
+// findings and real remediation outcomes. Nothing here is a hardcoded number:
+// every score carries the per-finding residual-risk contributions that
+// produced it, so an auditor can recompute it by hand.
 //
-// Scoring model (documented so it is auditable, not magical):
-//   • Each framework starts at 100.
-//   • An OPEN finding in a category relevant to the framework deducts its full
-//     severity weight (critical 25, high 15, medium 8, low 3).
-//   • A finding that EarlyCore remediated AND verified closed (simulate
-//     confirmed the chain is blocked) deducts 20% of its weight — the control
-//     gap existed and is on record, but the exposure is gone.
-//   • A finding remediated but not yet verified deducts 50%.
-//   Score = max(0, 100 − Σ deductions), rounded.
+// Posture model (scales to any number of findings — this is the key):
+//   • Each relevant finding carries a severity risk weight
+//     (critical 25, high 15, medium 8, low 3).
+//   • A finding's RESIDUAL risk = weight × residual factor, where the factor
+//     shrinks as EarlyCore mitigates it:
+//       open 1.0 · remediating 0.4 · closed 0.15 · verified-closed 0.05
+//   • Framework score = 100 × (1 − residualRisk / totalPotentialRisk).
+//     A framework with no relevant findings scores 100. A framework whose
+//     findings are all open scores ~0. One whose findings EarlyCore found AND
+//     autonomously closed scores high — detection + remediation IS good posture.
 
 import type {
   ComplianceScore,
@@ -33,8 +34,9 @@ export const FRAMEWORKS: Framework[] = [
 const WEIGHT: Record<Severity, number> = { critical: 25, high: 15, medium: 8, low: 3 };
 
 // Which frameworks a finding category bears on. PII touches privacy frameworks
-// hardest; agency/authorization failures touch control frameworks.
-const RELEVANT: Record<FindingCategory, Framework[]> = {
+// hardest; agency/authorization failures touch control frameworks. Unmapped
+// categories fall back to the broad AI-risk frameworks.
+const RELEVANT: Partial<Record<FindingCategory, Framework[]>> = {
   'pii-leak': ['GDPR', 'EU AI Act', 'SOC 2', 'ISO 42001'],
   'data-exfiltration': ['GDPR', 'SOC 2', 'NIST AI RMF'],
   'prompt-injection': ['EU AI Act', 'NIST AI RMF', 'ISO 42001'],
@@ -44,39 +46,58 @@ const RELEVANT: Record<FindingCategory, Framework[]> = {
   bola: ['SOC 2', 'GDPR'],
   ssrf: ['SOC 2', 'NIST AI RMF'],
   hijacking: ['EU AI Act', 'NIST AI RMF', 'IEEE 7000'],
-  other: ['NIST AI RMF'],
 };
+const FALLBACK_FRAMEWORKS: Framework[] = ['NIST AI RMF', 'ISO 42001'];
+
+function relevantFrameworks(category: FindingCategory): Framework[] {
+  return RELEVANT[category] ?? FALLBACK_FRAMEWORKS;
+}
 
 function residualFactor(record: FindingRecord): number {
-  if (record.status === 'verified-closed') return 0.2;
-  if (record.status === 'closed' || record.status === 'remediating') return 0.5;
-  return 1; // open
+  switch (record.status) {
+    case 'verified-closed':
+      return 0.05;
+    case 'closed':
+      return 0.15;
+    case 'remediating':
+      return 0.4;
+    default:
+      return 1; // open
+  }
 }
 
 export function computeScores(records: FindingRecord[]): ComplianceScore[] {
   return FRAMEWORKS.map((framework) => {
     const deductions: ComplianceScore['deductions'] = [];
     let open = 0;
-    let closed = 0;
+    let mitigated = 0;
+    let totalRisk = 0;
+    let residualRisk = 0;
 
     for (const record of records) {
       const { finding } = record;
       if (!finding.landed) continue;
-      if (!RELEVANT[finding.category].includes(framework)) continue;
+      if (!relevantFrameworks(finding.category).includes(framework)) continue;
 
+      const weight = WEIGHT[finding.severity];
       const factor = residualFactor(record);
-      const points = Math.round(WEIGHT[finding.severity] * factor * 10) / 10;
-      deductions.push({ findingId: finding.id, points, mitigated: factor < 1 });
+      const residual = Math.round(weight * factor * 10) / 10;
+      totalRisk += weight;
+      residualRisk += residual;
+
+      deductions.push({ findingId: finding.id, points: residual, mitigated: factor < 1 });
       if (record.status === 'open') open++;
-      else closed++;
+      else mitigated++;
     }
 
-    const total = deductions.reduce((sum, d) => sum + d.points, 0);
+    // No relevant findings → clean posture for this framework.
+    const score = totalRisk === 0 ? 100 : Math.round(100 * (1 - residualRisk / totalRisk));
+
     return {
       framework,
-      score: Math.max(0, Math.round(100 - total)),
+      score: Math.max(0, Math.min(100, score)),
       openFindings: open,
-      closedFindings: closed,
+      closedFindings: mitigated,
       deductions,
     };
   });

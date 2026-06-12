@@ -34,6 +34,8 @@ export interface EarlyCoreState {
   activity: AgentActivityEvent[]
   logs: LogLine[]
   stage: string | null
+  scanning: boolean
+  lastScanAt: string | null
   actions: number
 }
 
@@ -49,21 +51,32 @@ const initial: EarlyCoreState = {
   activity: [],
   logs: [],
   stage: null,
+  scanning: false,
+  lastScanAt: null,
   actions: 0,
 }
 
-type Action = { type: 'event'; event: EarlyCoreEvent } | { type: 'connected'; value: boolean }
+type Action =
+  | { type: 'event'; event: EarlyCoreEvent }
+  | { type: 'connected'; value: boolean }
+  | { type: 'status'; scanning: boolean; lastScanAt: string | null }
 
 function reducer(state: EarlyCoreState, action: Action): EarlyCoreState {
   if (action.type === 'connected') return { ...state, connected: action.value }
+  if (action.type === 'status') {
+    return { ...state, scanning: action.scanning, lastScanAt: action.lastScanAt ?? state.lastScanAt }
+  }
   const ev = action.event
   switch (ev.kind) {
     case 'topology':
-      // A new run starts with a topology broadcast — reset run-scoped state.
+      // A new scan starts with a topology broadcast — reset scan-scoped state
+      // but keep the prior lastScanAt until this scan completes.
       return {
         ...initial,
         connected: state.connected,
         topology: ev.topology,
+        scanning: true,
+        lastScanAt: state.lastScanAt,
       }
     case 'activity':
       return { ...state, activity: [...state.activity, ...ev.events] }
@@ -96,9 +109,15 @@ function reducer(state: EarlyCoreState, action: Action): EarlyCoreState {
     case 'compliance':
       return { ...state, scores: ev.scores }
     case 'stage':
-      return { ...state, stage: ev.stage }
+      return { ...state, stage: ev.stage, scanning: true }
     case 'summary':
-      return { ...state, actions: ev.actions, stage: null }
+      return {
+        ...state,
+        actions: ev.actions,
+        stage: null,
+        scanning: false,
+        lastScanAt: new Date().toISOString(),
+      }
     case 'log':
       return { ...state, logs: [...state.logs.slice(-199), { level: ev.level, message: ev.message }] }
     default:
@@ -127,6 +146,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // ignore malformed frames
       }
     }
+
+    // Pull monitoring status, and if the platform has never scanned (and isn't
+    // mid-scan), kick off the first scan automatically — EarlyCore is always
+    // on, so it should never sit idle and empty.
+    fetch('/api/status')
+      .then((r) => r.json())
+      .then((s: { scanning: boolean; lastScanAt: string | null }) => {
+        dispatch({ type: 'status', scanning: s.scanning, lastScanAt: s.lastScanAt })
+        if (!s.scanning && !s.lastScanAt) {
+          fetch('/api/run', { method: 'POST' }).catch(() => {})
+        }
+      })
+      .catch(() => {})
+
     return () => sse.close()
   }, [])
 
