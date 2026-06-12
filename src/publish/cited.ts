@@ -16,7 +16,13 @@ const PROMPT_CACHE = '.earlycore/senso-evidence-prompt.json'
 const EVIDENCE_QUESTION =
   'What verified security evidence does EarlyCore produce from a live autonomy-loop run?'
 
-export function buildCitedMd(pack: AuditorPack): string {
+export function buildCitedMd(
+  pack: AuditorPack,
+  opts: { detailSeverities?: string[]; maxField?: number } = {},
+): string {
+  const detail = new Set(opts.detailSeverities ?? ['critical', 'high', 'medium', 'low'])
+  const cap = opts.maxField ?? 100000
+  const trim = (s: string) => (s.length > cap ? s.slice(0, cap) + '…' : s)
   const closed = pack.records.filter((r) => r.status === 'verified-closed' || r.status === 'closed')
   const replayProven = pack.simulations.filter((s) => s.replayed && s.blocked)
 
@@ -45,24 +51,33 @@ export function buildCitedMd(pack: AuditorPack): string {
     const sim = pack.simulations.find((s) => s.findingId === f.id)
     const mapping = pack.mappings.find((m) => m.findingId === f.id)
 
+    if (!detail.has(f.severity)) {
+      // Compact entry for severities outside the detail set (publish digest).
+      lines.push(
+        `- **${f.id}** — ${f.category} (${f.severity}, ${record.priority}, ${f.phase}); ` +
+          `action: ${remediation?.action ?? 'n/a'}; ${sim?.blocked ? 'chain closed' : 'tracked'}`,
+      )
+      continue
+    }
+
     lines.push(
       `### ${f.id} — ${f.category} (${f.severity}, ${record.priority}, ${f.phase})`,
       '',
-      f.description,
+      trim(f.description),
       '',
-      `- **Attack payload:** \`${f.probe.replace(/`/g, "'")}\``,
-      `- **Observed evidence:** ${f.evidence}`,
+      `- **Attack payload:** \`${trim(f.probe).replace(/`/g, "'")}\``,
+      `- **Observed evidence:** ${trim(f.evidence)}`,
       `- **Nodes the attack really touched:** ${f.observedNodes.join(' → ')}`,
     )
     if (remediation) {
       lines.push(
-        `- **Autonomous action:** ${remediation.action} (${remediation.mode}) at ${remediation.executedAt} — ${remediation.detail}`,
+        `- **Autonomous action:** ${remediation.action} (${remediation.mode}) at ${remediation.executedAt} — ${trim(remediation.detail)}`,
       )
     }
-    if (sim) lines.push(`- **Replay verification:** ${sim.detail}`)
+    if (sim) lines.push(`- **Replay verification:** ${trim(sim.detail)}`)
     if (mapping) {
       lines.push(
-        `- **Control citation:** ${mapping.framework} ${mapping.clause} (${mapping.mode}) — "${mapping.clauseText}"`,
+        `- **Control citation:** ${mapping.framework} ${mapping.clause} (${mapping.mode}) — "${trim(mapping.clauseText)}"`,
       )
     }
     lines.push('')
@@ -167,9 +182,17 @@ export async function publishCited(pack: AuditorPack): Promise<CitedResult> {
     return { published: false, file: CITED_FILE, reason: 'could not resolve Senso evidence prompt' }
   }
 
+  let publishMd = md
+  if (Buffer.byteLength(publishMd, 'utf8') > 100_000) {
+    publishMd =
+      buildCitedMd(pack, { detailSeverities: ['critical', 'high'], maxField: 220 }) +
+      '\n\n> Digest edition (full evidence exceeds the publish size limit). The complete' +
+      '\n> document is generated on every run at `.earlycore/cited.md` in the repo, with' +
+      '\n> the machine-readable auditor pack at `.earlycore/auditor-pack.json`.\n'
+  }
   const published = senso(['engine', 'publish'], {
     geo_question_id: promptId,
-    raw_markdown: md,
+    raw_markdown: publishMd,
     seo_title: `EarlyCore autonomy-loop security evidence — ${pack.generatedAt}`,
     summary: `Verified findings, autonomous remediations, and replay proofs from the EarlyCore run at ${pack.generatedAt}.`,
   })
