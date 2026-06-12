@@ -1,0 +1,11 @@
+node_modules/
+.env
+.earlycore/
+*.log
+dist/
+.DS_Store
+.cursor/
+.agents/
+.claude/
+/tmp/
+*.output

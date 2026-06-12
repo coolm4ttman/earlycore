@@ -1,0 +1,34 @@
+{
+  "name": "earlycore",
+  "version": "0.1.0",
+  "description": "EarlyCore — Wiz for agents. Autonomous red-team, agent attack graph, machine-speed remediation.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "target": "tsx demo/vulnerable-agent.ts",
+    "gateway": "tsx src/runtime/index.ts",
+    "demo": "tsx src/orchestrator.ts",
+    "demo:stub": "EARLYCORE_STUB=1 tsx src/orchestrator.ts",
+    "demo:promptfoo": "EARLYCORE_MODE=promptfoo tsx src/orchestrator.ts",
+    "ui": "tsx ui/server.ts",
+    "redteam": "npx --yes promptfoo@0.120.27 redteam run -c config/promptfooconfig.yaml -o .earlycore/redteam-results.json --remote",
+    "typecheck": "tsc --noEmit",
+    "web:dev": "cd ui/web && npm run dev",
+    "web:build": "cd ui/web && npm run build"
+  },
+  "dependencies": {
+    "@clickhouse/client": "^1.20.0",
+    "@composio/core": "^0.10.0",
+    "@senso-ai/cli": "^0.11.1",
+    "langfuse": "^3.38.20",
+    "openai": "^6.42.0",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
